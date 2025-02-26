@@ -1,0 +1,183 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local localPlayer = Players.LocalPlayer
+
+-- Tween configuration
+local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local pulseInfo = TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+
+-- Function to tween highlight colors
+local function tweenHighlightColors(highlight, targetFillColor, targetOutlineColor)
+    if not highlight then return end
+    local tween = TweenService:Create(highlight, tweenInfo, {
+        FillColor = targetFillColor,
+        OutlineColor = targetOutlineColor,
+    })
+    tween:Play()
+end
+
+-- Function to create a pulsating effect for enemies
+local function createPulseEffect(highlight, baseColor)
+    if not highlight then return end
+    local pulseTween = TweenService:Create(highlight, pulseInfo, {
+        FillColor = baseColor:Lerp(Color3.new(1, 1, 1), 0.3),
+    })
+    pulseTween:Play()
+end
+
+-- Function to check if a player is a bot
+local function isBot(player)
+    return player:GetAttribute("IsBot") == true or string.find(player.Name, "Bot") ~= nil
+end
+
+-- Function to get highlight colors based on team and status
+local function getTargetColors(player)
+    if isBot(player) then
+        return Color3.fromRGB(255, 165, 0), Color3.fromRGB(255, 140, 0)
+    elseif player.Team == localPlayer.Team then
+        return Color3.fromRGB(0, 150, 255), Color3.fromRGB(0, 120, 255)
+    else
+        return Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0)
+    end
+end
+
+-- Function to apply or update the highlight
+local function applyHighlight(character)
+    if not character then return end
+    local highlight = character:FindFirstChild("Highlight")
+    if not highlight then
+        highlight = Instance.new("Highlight")
+        highlight.Name = "Highlight"
+        highlight.Parent = character
+        highlight.FillColor = Color3.new(0, 0, 0)
+        highlight.OutlineColor = Color3.new(0, 0, 0)
+    end
+    
+    local player = Players:GetPlayerFromCharacter(character)
+    if player then
+        local targetFill, targetOutline = getTargetColors(player)
+        tweenHighlightColors(highlight, targetFill, targetOutline)
+        
+        if player.Team ~= localPlayer.Team and not isBot(player) then
+            createPulseEffect(highlight, targetFill)
+        end
+    end
+end
+
+-- Function to handle character spawn
+local function onCharacterAdded(character)
+    character:WaitForChild("Humanoid", 5)
+    applyHighlight(character)
+end
+
+-- Function to handle new players
+local function onPlayerAdded(player)
+    player.CharacterAdded:Connect(onCharacterAdded)
+    if player.Character then
+        onCharacterAdded(player.Character)
+    end
+end
+
+-- Apply to existing players
+for _, player in ipairs(Players:GetPlayers()) do
+    onPlayerAdded(player)
+end
+
+-- Listen for new players
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Cleanup when players leave
+Players.PlayerRemoving:Connect(function(player)
+    if player.Character then
+        local highlight = player.Character:FindFirstChild("Highlight")
+        if highlight then
+            highlight:Destroy()
+        end
+    end
+end)
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+local Camera = workspace.CurrentCamera
+
+-- Spread factor (adjust this value for more or less spread)
+local SPREAD_AMOUNT = 10 -- Higher value means more spread
+
+-- Function to find the closest enemy head
+local function findClosestHead()
+    local closestHead = nil
+    local shortestDistance = math.huge
+
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            if head then
+                local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
+                if onScreen then
+                    local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestHead = head
+                    end
+                end
+            end
+        end
+    end
+    return closestHead
+end
+
+-- Function to apply aim spread to the shooting direction
+local function applyAimSpread(target)
+    if target then
+        -- Get a random spread offset for the bullet's aim
+        local spreadOffsetX = math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
+        local spreadOffsetY = math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
+
+        -- Apply the offset to the target's screen position
+        local screenPos, onScreen = Camera:WorldToScreenPoint(target.Position)
+        if onScreen then
+            screenPos = screenPos + Vector2.new(spreadOffsetX, spreadOffsetY)
+            local worldPos = Camera:ScreenToWorldPoint(Vector3.new(screenPos.X, screenPos.Y, screenPos.Z))
+            return worldPos
+        end
+    end
+    return nil
+end
+
+-- Function to handle bullet hit with headshot aim correction
+local function onBulletHit(target, damage)
+    if target and target.Parent then
+        local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
+        local head = target.Parent:FindFirstChild("Head") or findClosestHead()
+
+        if humanoid and head then
+            -- Force hit to register on the head
+            humanoid:TakeDamage(damage * 2) -- Double damage
+        end
+    end
+end
+
+-- Function to handle shooting (PC & Mobile)
+local function onShoot()
+    local target = findClosestHead() or Mouse.Target
+    if target then
+        -- Apply aim spread before hitting the target
+        local spreadTarget = applyAimSpread(target)
+        if spreadTarget then
+            onBulletHit(spreadTarget, 25) -- Adjust base damage
+        end
+    end
+end
+
+-- Detect PC Shooting (Mouse Click)
+Mouse.Button1Down:Connect(onShoot)
+
+-- Detect Mobile Shooting (Touch Tap)
+UserInputService.TouchTap:Connect(function(touchPositions, processed)
+    if not processed then
+        onShoot()
+    end
+end)
