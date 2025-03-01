@@ -162,6 +162,56 @@ Players.PlayerRemoving:Connect(function(player)
     RemoveESPLine(player)
 end)
 
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local PhysicsService = game:GetService("PhysicsService")
+
+-- 🛠️ Reduce Unnecessary Physics Calculations
+PhysicsService:SetPartCollisionGroup(workspace, "Default")
+settings().PhysicsThrottle = Enum.PhysicsThrottle.Adaptive
+game:GetService("Workspace").RejectCharacterDeletions = true
+
+-- 🚀 Optimize Graphics & Lighting
+Lighting.GlobalShadows = false
+Lighting.FogEnd = 100000
+Lighting.Brightness = 1
+
+-- 🎭 Disable Unused Player Features
+Players.CharacterAutoLoads = false
+
+-- 🔄 Garbage Collection for Performance
+local function CleanMemory()
+    collectgarbage("collect")
+end
+
+RunService.Heartbeat:Connect(function()
+    CleanMemory()
+end)
+
+-- 🕵️‍♂️ Auto Remove Unused Parts & Models
+for _, v in pairs(workspace:GetChildren()) do
+    if v:IsA("Part") or v:IsA("MeshPart") then
+        v:SetAttribute("CanTouch", false)
+        v:SetAttribute("CanCollide", false)
+    end
+end
+
+-- 🎮 Disable Unused Scripts (If Not Needed)
+for _, script in pairs(game:GetDescendants()) do
+    if script:IsA("Script") or script:IsA("LocalScript") then
+        script.Disabled = true
+    end
+end
+
+-- 💨 Disable Heavy Effects
+for _, v in pairs(workspace:GetDescendants()) do
+    if v:IsA("ParticleEmitter") or v:IsA("Trail") then
+        v.Enabled = false
+    end
+end
+
+print("✅ Performance Optimization Applied!")
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -170,10 +220,12 @@ local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
 
--- Configuration
-local AIM_SMOOTHNESS = 0.2 -- Lower = Faster Aim
-local SPREAD_AMOUNT = 5 -- Small randomness to prevent perfect aim
-local REACTION_TIME = 0.05 -- Delay before reacting
+-- 🎯 AIMBOT SETTINGS 🎯 --
+local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
+local AIM_RANDOMNESS = 1 -- Adds slight inaccuracy for realism
+local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
+local HEADSHOT_DAMAGE = 59 -- Damage multiplier for headshots
+local TRACK_MOVEMENT = true -- Predicts enemy movement
 
 -- Function to check if a player is an enemy
 local function isEnemy(player)
@@ -183,17 +235,23 @@ end
 -- Function to check if an enemy is visible
 local function isVisible(target)
     if target and target.Parent then
-        local screenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
-        if onScreen then
-            -- Raycast to check if there is an obstacle between the player and the enemy
-            local origin = Camera.CFrame.Position
-            local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
-            local raycastResult = workspace:Raycast(origin, direction, {LocalPlayer.Character, target.Parent}) -- Ignore local player and target itself
+        local origin = Camera.CFrame.Position
+        local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
+        local raycastResult = workspace:Raycast(origin, direction, {LocalPlayer.Character, target.Parent}) -- Ignore local player & enemy
 
-            return not raycastResult -- Returns true if no obstacle is detected
-        end
+        return not raycastResult -- Returns true if no obstacles
     end
     return false
+end
+
+-- Function to predict enemy movement
+local function predictPosition(target)
+    if not target or not TRACK_MOVEMENT then return target.Position end
+    local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.MoveDirection.Magnitude > 0 then
+        return target.Position + humanoid.MoveDirection * 0.2 -- Adjust prediction speed
+    end
+    return target.Position
 end
 
 -- Function to find the closest visible enemy head
@@ -204,8 +262,9 @@ local function findClosestVisibleEnemyHead()
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and isEnemy(player) and player.Character then
             local head = player.Character:FindFirstChild("Head")
-            if head and isVisible(head) then -- Only aim if enemy is visible
-                local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
+            if head and isVisible(head) then
+                local predictedPos = predictPosition(head)
+                local screenPos, onScreen = Camera:WorldToScreenPoint(predictedPos)
                 if onScreen then
                     local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
                     if distance < shortestDistance then
@@ -219,16 +278,18 @@ local function findClosestVisibleEnemyHead()
     return closestHead
 end
 
--- Function to smoothly move aim toward the target
+-- Function to smoothly aim toward the target
 local function smoothAim(targetHead)
     if targetHead then
-        local screenPos, onScreen = Camera:WorldToScreenPoint(targetHead.Position)
+        local predictedPos = predictPosition(targetHead)
+        local screenPos, onScreen = Camera:WorldToScreenPoint(predictedPos)
         if onScreen then
-            local targetX = screenPos.X + math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
-            local targetY = screenPos.Y + math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
+            local targetX = screenPos.X + math.random(-AIM_RANDOMNESS, AIM_RANDOMNESS)
+            local targetY = screenPos.Y + math.random(-AIM_RANDOMNESS, AIM_RANDOMNESS)
 
-            Mouse.X = Mouse.X + (targetX - Mouse.X) * AIM_SMOOTHNESS
-            Mouse.Y = Mouse.Y + (targetY - Mouse.Y) * AIM_SMOOTHNESS
+            -- Smooth interpolation toward target
+            Mouse.X = Mouse.X + (targetX - Mouse.X) * AIM_SPEED
+            Mouse.Y = Mouse.Y + (targetY - Mouse.Y) * AIM_SPEED
         end
     end
 end
@@ -237,14 +298,14 @@ end
 local function onShoot()
     local targetHead = findClosestVisibleEnemyHead()
     if targetHead then
-        task.wait(REACTION_TIME) -- Delay before reacting
-        smoothAim(targetHead) -- Adjust aim smoothly
-        task.wait(0.1) -- Small delay to make it look natural
+        task.wait(REACTION_TIME) -- Simulated reaction delay
+        smoothAim(targetHead) -- Gradually move crosshair
+        task.wait(0.1) -- Small delay for realism
 
-        -- Simulate a headshot hit
+        -- Simulate headshot damage
         local humanoid = targetHead.Parent:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            humanoid:TakeDamage(50) -- Adjust damage as needed
+            humanoid:TakeDamage(HEADSHOT_DAMAGE) -- Adjust damage
         end
     end
 end
@@ -259,7 +320,7 @@ UserInputService.TouchTap:Connect(function(_, processed)
     end
 end)
 
--- Smooth Aimbot Loop (Only Reacts When Enemy Is Visible)
+-- Ultra-Smooth Aimbot Loop (Only Reacts When Enemy is Visible)
 RunService.RenderStepped:Connect(function()
     local targetHead = findClosestVisibleEnemyHead()
     if targetHead then
