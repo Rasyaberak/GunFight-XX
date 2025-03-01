@@ -221,38 +221,45 @@ local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
 
 -- 🎯 AIMBOT SETTINGS 🎯 --
-local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
-local AIM_RANDOMNESS = 3 -- Small inaccuracy for realism
-local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
-local HEADSHOT_DAMAGE = 50 -- Base headshot damage
-local BODYSHOT_DAMAGE = 25 -- Base bodyshot damage
-local DAMAGE_MULTIPLIER_DISTANCE = 0.1 -- More damage at long range
+local AIM_SPEED = 0.15 -- Smooth tracking speed (lower = faster lock)
+local AIM_RANDOMNESS = 0 -- No randomness, perfect aim
+local REACTION_TIME = 0.02 -- Delay before locking onto enemy
+local HEADSHOT_DAMAGE = 100 -- One-shot kill on headshots
+local BODYSHOT_DAMAGE = 50 -- Balanced bodyshot damage
+local DAMAGE_MULTIPLIER_DISTANCE = 0.2 -- More damage at long range
 local TRACK_MOVEMENT = true -- Predicts enemy movement
-local AUTO_HIT_CORRECTION = true -- Fixes missed shots to hit
-local WALLBANG_ENABLED = true -- 🔥 Set to true to shoot enemies through walls
-local WALLBANG_DAMAGE_REDUCTION = 0.5 -- Reduce damage through walls by 50%
+local AUTO_HIT_CORRECTION = true -- Bullets always hit
+local BULLET_SPEED = math.huge -- Instant bullet hits
+local TRIGGER_BOT = true -- Auto-shoot when enemy in crosshair
+local FOV_LIMIT = 200 -- Aimbot only locks onto enemies within this range
+local HEALTH_BASED_TARGETING = true -- Targets low-health enemies first
+local WALLBANG_ENABLED = true -- 🔥 Shoot enemies through thin walls
+local MAX_WALL_THICKNESS = 5 -- Maximum thickness for wall penetration
+local WALLBANG_DAMAGE_REDUCTION = 0.4 -- 40% less damage through walls
+local AUTO_LOCK = true -- 🔥 Smoothly locks onto enemy
 
 -- Function to check if a player is an enemy
 local function isEnemy(player)
     return player and player.Team ~= LocalPlayer.Team
 end
 
--- Function to check if an enemy is visible or behind a wall
-local function isTargetValid(target)
+-- Function to check if an enemy is visible (or behind a thin wall)
+local function isTargetVisible(target)
     if not target or not target.Parent then return false end
     local origin = Camera.CFrame.Position
     local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
     local raycastParams = RaycastParams.new()
-    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character} -- Ignore self
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character}
     raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
 
     local raycastResult = workspace:Raycast(origin, direction, raycastParams)
 
     if raycastResult then
-        if WALLBANG_ENABLED then
-            return true -- Allow shooting through walls
+        local wallThickness = (raycastResult.Position - origin).Magnitude
+        if WALLBANG_ENABLED and wallThickness <= MAX_WALL_THICKNESS then
+            return true -- Shoot through thin walls
         else
-            return false -- Block shot if wallbang is disabled
+            return false -- Block shot if wall is too thick
         end
     else
         return true -- No obstruction, can shoot normally
@@ -264,39 +271,56 @@ local function predictPosition(target)
     if not target or not TRACK_MOVEMENT then return target.Position end
     local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
     if humanoid and humanoid.MoveDirection.Magnitude > 0 then
-        return target.Position + humanoid.MoveDirection * 0.2 -- Adjust prediction speed
+        return target.Position + humanoid.MoveDirection * 0.3 -- Predict ahead
     end
     return target.Position
 end
 
--- Function to find the closest enemy (visible or behind a wall if enabled)
-local function findClosestEnemy()
-    local closestTarget = nil
+-- Function to check if the enemy is inside FOV range
+local function isInFOV(target)
+    local screenPos, onScreen = Camera:WorldToScreenPoint(target.Position)
+    if onScreen then
+        local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
+        return distance <= FOV_LIMIT
+    end
+    return false
+end
+
+-- Function to find the best enemy target
+local function findBestTarget()
+    local bestTarget = nil
+    local lowestHealth = math.huge
     local shortestDistance = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and isEnemy(player) and player.Character then
             local head = player.Character:FindFirstChild("Head")
-            if head and isTargetValid(head) then
+            local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+
+            if head and humanoid and isTargetVisible(head) and isInFOV(head) then
                 local predictedPos = predictPosition(head)
                 local screenPos, onScreen = Camera:WorldToScreenPoint(predictedPos)
                 if onScreen then
                     local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
-                    if distance < shortestDistance then
+                    
+                    if HEALTH_BASED_TARGETING and humanoid.Health < lowestHealth then
+                        lowestHealth = humanoid.Health
+                        bestTarget = head
+                    elseif distance < shortestDistance then
                         shortestDistance = distance
-                        closestTarget = head
+                        bestTarget = head
                     end
                 end
             end
         end
     end
-    return closestTarget
+    return bestTarget
 end
 
--- Function to smoothly aim toward the target
-local function smoothAim(targetHead)
-    if targetHead then
-        local predictedPos = predictPosition(targetHead)
+-- Function to smoothly lock onto the target
+local function smoothAutoLock(target)
+    if target then
+        local predictedPos = predictPosition(target)
         local screenPos, onScreen = Camera:WorldToScreenPoint(predictedPos)
         if onScreen then
             local targetX = screenPos.X + math.random(-AIM_RANDOMNESS, AIM_RANDOMNESS)
@@ -309,21 +333,20 @@ local function smoothAim(targetHead)
     end
 end
 
--- Function to calculate damage based on distance and wall penetration
+-- Function to calculate damage
 local function calculateDamage(target)
     local distance = (Camera.CFrame.Position - target.Position).Magnitude
     local extraDamage = distance * DAMAGE_MULTIPLIER_DISTANCE
     local baseDamage = HEADSHOT_DAMAGE
 
-    -- If wall penetration is enabled and the shot goes through a wall, reduce damage
-    if WALLBANG_ENABLED and not isTargetValid(target) then
+    if WALLBANG_ENABLED and not isTargetVisible(target) then
         return (baseDamage + extraDamage) * WALLBANG_DAMAGE_REDUCTION
     else
         return baseDamage + extraDamage
     end
 end
 
--- Function to correct missed shots and ensure hits
+-- Function to ensure missed shots still hit
 local function correctMiss(target)
     if AUTO_HIT_CORRECTION and target then
         local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
@@ -334,15 +357,14 @@ local function correctMiss(target)
     end
 end
 
--- Function to shoot when an enemy is visible or behind a wall
+-- Function to shoot at the enemy
 local function onShoot()
-    local target = findClosestEnemy()
+    local target = findBestTarget()
     if target then
         task.wait(REACTION_TIME) -- Simulated reaction delay
-        smoothAim(target) -- Gradually move crosshair
-        task.wait(0.1) -- Small delay for realism
+        smoothAutoLock(target) -- Smooth lock-on
+        task.wait(0.05) -- Small delay for realism
 
-        -- Simulate headshot damage
         local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
         if humanoid then
             local damage = calculateDamage(target)
@@ -351,7 +373,7 @@ local function onShoot()
     else
         -- If shot misses, auto-correct to still hit
         if AUTO_HIT_CORRECTION then
-            local randomEnemy = findClosestEnemy()
+            local randomEnemy = findBestTarget()
             if randomEnemy then correctMiss(randomEnemy) end
         end
     end
@@ -367,10 +389,15 @@ UserInputService.TouchTap:Connect(function(_, processed)
     end
 end)
 
--- Ultra-Smooth Aimbot Loop (Only Reacts When Enemy is Visible or Behind a Wall)
+-- Ultra-Smooth Aimbot Loop (Only Reacts When Enemy is Visible)
 RunService.RenderStepped:Connect(function()
-    local target = findClosestEnemy()
+    local target = findBestTarget()
     if target then
-        smoothAim(target)
+        if AUTO_LOCK then
+            smoothAutoLock(target) -- 🔥 Smooth Auto-Lock
+        end
+        if TRIGGER_BOT then
+            onShoot() -- Auto-fire when enemy is in crosshair
+        end
     end
 end)
