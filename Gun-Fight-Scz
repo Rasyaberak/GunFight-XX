@@ -222,11 +222,13 @@ local Camera = workspace.CurrentCamera
 
 -- 🎯 AIMBOT SETTINGS 🎯 --
 local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
-local AIM_RANDOMNESS = 1 -- Adds slight inaccuracy for realism
-local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
-local HEADSHOT_DAMAGE = 59 -- Damage multiplier for headshots
-local HEAD_SCALE = 3 -- Adjust this value to make heads bigger or smaller
+local AIM_RANDOMNESS = 5 -- Small inaccuracy for realism
+local REACTION_TIME = 0.01 -- Delay before locking onto an enemy
+local HEADSHOT_DAMAGE = 50 -- Base headshot damage
+local BODYSHOT_DAMAGE = 45 -- Base bodyshot damage
+local DAMAGE_MULTIPLIER_DISTANCE = 0.1 -- More damage at long range
 local TRACK_MOVEMENT = true -- Predicts enemy movement
+local AUTO_HIT_CORRECTION = true -- Fixes missed shots to hit
 
 -- Function to check if a player is an enemy
 local function isEnemy(player)
@@ -295,6 +297,24 @@ local function smoothAim(targetHead)
     end
 end
 
+-- Function to calculate damage based on distance
+local function calculateDamage(target)
+    local distance = (Camera.CFrame.Position - target.Position).Magnitude
+    local extraDamage = distance * DAMAGE_MULTIPLIER_DISTANCE
+    return HEADSHOT_DAMAGE + extraDamage
+end
+
+-- Function to correct missed shots and ensure hits
+local function correctMiss(target)
+    if AUTO_HIT_CORRECTION and target then
+        local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            local damage = calculateDamage(target)
+            humanoid:TakeDamage(damage) -- Apply damage correction
+        end
+    end
+end
+
 -- Function to shoot when an enemy is visible
 local function onShoot()
     local targetHead = findClosestVisibleEnemyHead()
@@ -306,47 +326,17 @@ local function onShoot()
         -- Simulate headshot damage
         local humanoid = targetHead.Parent:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            humanoid:TakeDamage(HEADSHOT_DAMAGE) -- Adjust damage
+            local damage = calculateDamage(targetHead)
+            humanoid:TakeDamage(damage) -- Apply calculated damage
+        end
+    else
+        -- If shot misses, auto-correct to still hit
+        if AUTO_HIT_CORRECTION then
+            local randomEnemy = findClosestVisibleEnemyHead()
+            if randomEnemy then correctMiss(randomEnemy) end
         end
     end
 end
-
--- Function to enlarge enemy heads
-local function enlargeHead(player)
-    if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team and player.Character then
-        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-        local head = player.Character:FindFirstChild("Head")
-
-        if humanoid and head then
-            if humanoid.RigType == Enum.HumanoidRigType.R15 then
-                -- For R15 avatars (modern Roblox characters)
-                humanoid.HeadScale = HEAD_SCALE
-            else
-                -- For R6 avatars (classic blocky characters)
-                head.Size = Vector3.new(HEAD_SCALE, HEAD_SCALE, HEAD_SCALE)
-                head.Massless = true -- Prevents physics issues
-            end
-        end
-    end
-end
-
--- Apply big head effect to all enemies continuously
-local function updateHeads()
-    for _, player in pairs(Players:GetPlayers()) do
-        enlargeHead(player)
-    end
-end
-
--- Detect when new players join and apply effect
-Players.PlayerAdded:Connect(function(player)
-    player.CharacterAdded:Connect(function()
-        task.wait(0.5) -- Small delay to ensure character loads
-        enlargeHead(player)
-    end)
-end)
-
--- Continuously update head sizes (for reloading avatars)
-RunService.Heartbeat:Connect(updateHeads)
 
 -- Detect PC Shooting (Mouse Click)
 Mouse.Button1Down:Connect(onShoot)
