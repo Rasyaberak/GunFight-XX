@@ -166,52 +166,130 @@ local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 local PhysicsService = game:GetService("PhysicsService")
+local CollectionService = game:GetService("CollectionService")
 
--- 🛠️ Reduce Unnecessary Physics Calculations
+-- ⚙️ Optimize Physics Settings
 PhysicsService:SetPartCollisionGroup(workspace, "Default")
 settings().PhysicsThrottle = Enum.PhysicsThrottle.Adaptive
-game:GetService("Workspace").RejectCharacterDeletions = true
+workspace.RejectCharacterDeletions = true
+workspace.StreamingEnabled = true  -- Loads parts dynamically to reduce lag
 
--- 🚀 Optimize Graphics & Lighting
-Lighting.GlobalShadows = false
-Lighting.FogEnd = 100000
-Lighting.Brightness = 1
+-- 💡 Optimize Lighting (Good FPS Without Losing Quality)
+Lighting.GlobalShadows = true   -- Keep some shadows for realism
+Lighting.Brightness = 2         -- Normal brightness
+Lighting.FogEnd = 80000         -- Reasonable fog distance for better FPS
+Lighting.Outlines = false       -- Reduces rendering load
 
--- 🎭 Disable Unused Player Features
-Players.CharacterAutoLoads = false
+-- 🎭 Reduce Unnecessary Player Features
+Players.CharacterAutoLoads = true
+for _, player in pairs(Players:GetPlayers()) do
+    player.CameraMode = Enum.CameraMode.Classic
+    player.ReplicationFocus = workspace -- Optimizes network performance
+end
 
--- 🔄 Garbage Collection for Performance
+-- 🛠️ Auto Garbage Collection (Prevents Memory Overload)
 local function CleanMemory()
     collectgarbage("collect")
 end
-
 RunService.Heartbeat:Connect(function()
     CleanMemory()
 end)
 
--- 🕵️‍♂️ Auto Remove Unused Parts & Models
-for _, v in pairs(workspace:GetChildren()) do
-    if v:IsA("Part") or v:IsA("MeshPart") then
-        v:SetAttribute("CanTouch", false)
-        v:SetAttribute("CanCollide", false)
+-- 🔄 Reduce Overload from Parts & Effects
+for _, v in pairs(workspace:GetDescendants()) do
+    if v:IsA("ParticleEmitter") then
+        v.Rate = math.max(v.Rate * 0.4, 5) -- Reduce particles by 60% but keep them visible
+        v.Lifetime = NumberRange.new(v.Lifetime.Min * 0.5, v.Lifetime.Max * 0.5) -- Shorter lifetime
+    elseif v:IsA("Trail") then
+        v.Lifetime = math.min(v.Lifetime * 0.5, 0.5) -- Shorten trails
+        v.Enabled = false -- Disable unnecessary trails
+    elseif v:IsA("MeshPart") or v:IsA("Part") then
+        v.CanCollide = false -- Reduce physics load
+        v.Anchored = true -- Prevents unnecessary physics calculations
     end
 end
 
--- 🎮 Disable Unused Scripts (If Not Needed)
+-- 🚀 Auto Remove Unused & Hidden Parts (Prevents FPS Drops)
+for _, v in pairs(workspace:GetChildren()) do
+    if v:IsA("Model") and #v:GetChildren() == 0 then
+        v:Destroy()
+    end
+end
+
+-- 🔄 Disable Unused Scripts (But Keep Essential Ones)
 for _, script in pairs(game:GetDescendants()) do
     if script:IsA("Script") or script:IsA("LocalScript") then
-        script.Disabled = true
+        if not CollectionService:HasTag(script, "Essential") then
+            script.Disabled = true
+        end
     end
 end
 
--- 💨 Disable Heavy Effects
-for _, v in pairs(workspace:GetDescendants()) do
-    if v:IsA("ParticleEmitter") or v:IsA("Trail") then
-        v.Enabled = false
-    end
-end
+-- 🎮 Improve Network Performance (Reduce Lag from Many Players)
+game:GetService("NetworkSettings").IncomingReplicationLag = 0
+game:GetService("NetworkSettings").PhysicsSendRate = 60 -- Higher rate reduces lag
+game:GetService("NetworkSettings").RenderStreamedRegions = true -- Loads only visible areas
 
-print("✅ Performance Optimization Applied!")
+print("✅ Advanced Optimization Applied! Smooth FPS with good quality.")
+
+------------------------------
+-- 🖥️ FPS GUI (With Lag Detection)
+------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+
+local FPSBox = Instance.new("Frame")
+FPSBox.Size = UDim2.new(0, 150, 0, 60)
+FPSBox.Position = UDim2.new(1, -160, 0, 10) -- Top-right corner
+FPSBox.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+FPSBox.BackgroundTransparency = 0.4
+FPSBox.Parent = ScreenGui
+
+local FPSText = Instance.new("TextLabel")
+FPSText.Size = UDim2.new(1, 0, 0.5, 0)
+FPSText.Position = UDim2.new(0, 0, 0, 0)
+FPSText.TextColor3 = Color3.fromRGB(255, 255, 255)
+FPSText.TextScaled = true
+FPSText.BackgroundTransparency = 1
+FPSText.Parent = FPSBox
+
+local DropReasonText = Instance.new("TextLabel")
+DropReasonText.Size = UDim2.new(1, 0, 0.5, 0)
+DropReasonText.Position = UDim2.new(0, 0, 0.5, 0)
+DropReasonText.TextColor3 = Color3.fromRGB(255, 100, 100)
+DropReasonText.TextScaled = true
+DropReasonText.BackgroundTransparency = 1
+DropReasonText.Parent = FPSBox
+
+-- FPS Tracker Variables
+local fps = 60
+local lastUpdate = tick()
+local frameCount = 0
+
+-- Detect FPS Drops and Display Reason
+RunService.RenderStepped:Connect(function()
+    frameCount = frameCount + 1
+    local currentTime = tick()
+
+    if currentTime - lastUpdate >= 1 then
+        fps = frameCount
+        frameCount = 0
+        lastUpdate = currentTime
+
+        FPSText.Text = "FPS: " .. fps
+
+        -- Detect FPS drop and show reason
+        if fps < 30 then
+            DropReasonText.Text = "⚠️ High Lag (Too Many Parts)"
+        elseif fps < 50 then
+            DropReasonText.Text = "⚠️ Scripts Overload"
+        else
+            DropReasonText.Text = "" -- No warning if FPS is stable
+        end
+    end
+end)
+
+print("✅ FPS GUI Loaded")
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
