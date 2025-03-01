@@ -165,32 +165,46 @@ end)
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
-local RunService = game:GetService("RunService")
 
 -- Configuration
-local AIM_SMOOTHNESS = 0.2 -- Lower = Faster Aiming
-local SPREAD_AMOUNT = 5 -- Small random offset to prevent perfect tracking
+local AIM_SMOOTHNESS = 0.2 -- Lower = Faster Aim
+local SPREAD_AMOUNT = 5 -- Small randomness to prevent perfect aim
+local REACTION_TIME = 0.05 -- Delay before reacting
 
 -- Function to check if a player is an enemy
 local function isEnemy(player)
-    if player and player.Team ~= LocalPlayer.Team then
-        return true
+    return player and player.Team ~= LocalPlayer.Team
+end
+
+-- Function to check if an enemy is visible
+local function isVisible(target)
+    if target and target.Parent then
+        local screenPos, onScreen = Camera:WorldToViewportPoint(target.Position)
+        if onScreen then
+            -- Raycast to check if there is an obstacle between the player and the enemy
+            local origin = Camera.CFrame.Position
+            local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
+            local raycastResult = workspace:Raycast(origin, direction, {LocalPlayer.Character, target.Parent}) -- Ignore local player and target itself
+
+            return not raycastResult -- Returns true if no obstacle is detected
+        end
     end
     return false
 end
 
--- Function to find the closest enemy head
-local function findClosestEnemyHead()
+-- Function to find the closest visible enemy head
+local function findClosestVisibleEnemyHead()
     local closestHead = nil
     local shortestDistance = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and isEnemy(player) and player.Character then
             local head = player.Character:FindFirstChild("Head")
-            if head then
+            if head and isVisible(head) then -- Only aim if enemy is visible
                 local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
                 if onScreen then
                     local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
@@ -205,7 +219,7 @@ local function findClosestEnemyHead()
     return closestHead
 end
 
--- Function to smoothly move aim toward target
+-- Function to smoothly move aim toward the target
 local function smoothAim(targetHead)
     if targetHead then
         local screenPos, onScreen = Camera:WorldToScreenPoint(targetHead.Position)
@@ -219,13 +233,15 @@ local function smoothAim(targetHead)
     end
 end
 
--- Function to handle shooting (PC & Mobile)
+-- Function to shoot when an enemy is visible
 local function onShoot()
-    local targetHead = findClosestEnemyHead()
+    local targetHead = findClosestVisibleEnemyHead()
     if targetHead then
-        smoothAim(targetHead) -- Smoothly adjust aim
-        task.wait(0.1) -- Small delay to make aim look natural
-        -- Simulate a direct hit on the enemy's head
+        task.wait(REACTION_TIME) -- Delay before reacting
+        smoothAim(targetHead) -- Adjust aim smoothly
+        task.wait(0.1) -- Small delay to make it look natural
+
+        -- Simulate a headshot hit
         local humanoid = targetHead.Parent:FindFirstChildOfClass("Humanoid")
         if humanoid then
             humanoid:TakeDamage(50) -- Adjust damage as needed
@@ -243,9 +259,9 @@ UserInputService.TouchTap:Connect(function(_, processed)
     end
 end)
 
--- Smooth Aimbot Loop
+-- Smooth Aimbot Loop (Only Reacts When Enemy Is Visible)
 RunService.RenderStepped:Connect(function()
-    local targetHead = findClosestEnemyHead()
+    local targetHead = findClosestVisibleEnemyHead()
     if targetHead then
         smoothAim(targetHead)
     end
