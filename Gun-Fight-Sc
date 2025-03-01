@@ -98,6 +98,105 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Function to check if a player is an enemy
+local function IsEnemy(player)
+    return player.Team ~= LocalPlayer.Team
+end
+
+-- Function to create an ESP Box
+local function CreateESPBox()
+    local Box = Drawing.new("Square")
+    Box.Color = Color3.fromRGB(255, 0, 0) -- Red Box
+    Box.Thickness = 2
+    Box.Transparency = 1
+    Box.Visible = false
+    return Box
+end
+
+-- Function to create an ESP Line
+local function CreateESPLine()
+    local Line = Drawing.new("Line")
+    Line.Color = Color3.fromRGB(255, 0, 0) -- Red Line
+    Line.Thickness = 2
+    Line.Transparency = 1
+    Line.Visible = false
+    return Line
+end
+
+-- Store ESP Boxes and Lines for each enemy
+local ESP_Boxes = {}
+local ESP_Lines = {}
+
+-- ESP Update Loop
+RunService.RenderStepped:Connect(function()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and IsEnemy(player) then
+            local Character = player.Character
+            local Head = Character:FindFirstChild("Head")
+            local HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart")
+            local Humanoid = Character:FindFirstChild("Humanoid")
+            local MyCharacter = LocalPlayer.Character
+            local MyHumanoidRootPart = MyCharacter and MyCharacter:FindFirstChild("HumanoidRootPart")
+
+            if Head and HumanoidRootPart and Humanoid and MyHumanoidRootPart then
+                local HeadPos, OnScreenHead = Camera:WorldToViewportPoint(Head.Position)
+                local RootPos, OnScreenRoot = Camera:WorldToViewportPoint(HumanoidRootPart.Position)
+                local MyPos, OnScreenMe = Camera:WorldToViewportPoint(MyHumanoidRootPart.Position)
+
+                -- Create or get ESP Box
+                if not ESP_Boxes[player] then
+                    ESP_Boxes[player] = CreateESPBox()
+                end
+                local Box = ESP_Boxes[player]
+
+                -- Create or get ESP Line
+                if not ESP_Lines[player] then
+                    ESP_Lines[player] = CreateESPLine()
+                end
+                local Line = ESP_Lines[player]
+
+                if OnScreenHead and OnScreenRoot and OnScreenMe then
+                    -- Set Box Size
+                    local BoxHeight = math.abs(HeadPos.Y - RootPos.Y)
+                    local BoxWidth = BoxHeight / 1.5
+                    Box.Size = Vector2.new(BoxWidth, BoxHeight)
+                    Box.Position = Vector2.new(HeadPos.X - BoxWidth / 2, HeadPos.Y)
+                    Box.Visible = true
+
+                    -- Set ESP Line
+                    Line.From = Vector2.new(MyPos.X, MyPos.Y) -- Start from player's position
+                    Line.To = Vector2.new(RootPos.X, RootPos.Y) -- End at enemy's root position
+                    Line.Visible = true
+                else
+                    Box.Visible = false
+                    Line.Visible = false
+                end
+            end
+        elseif ESP_Boxes[player] and ESP_Lines[player] then
+            ESP_Boxes[player].Visible = false
+            ESP_Lines[player].Visible = false
+        end
+    end
+end)
+
+-- Cleanup on player removal
+Players.PlayerRemoving:Connect(function(player)
+    if ESP_Boxes[player] then
+        ESP_Boxes[player]:Remove()
+        ESP_Boxes[player] = nil
+    end
+    if ESP_Lines[player] then
+        ESP_Lines[player]:Remove()
+        ESP_Lines[player] = nil
+    end
+end)
+
+
+local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
