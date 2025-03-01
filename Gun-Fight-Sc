@@ -108,7 +108,7 @@ local function CreateESPLine(player)
     if not player or player == LocalPlayer or player.Team == LocalPlayer.Team then return end
 
     local line = Drawing.new("Line")
-    line.Thickness = 2.5
+    line.Thickness = 1.5
     line.Transparency = 1
     line.Color = Color3.fromRGB(255, 0, 0) -- **Red for enemy ESP**
     line.Visible = false
@@ -225,7 +225,7 @@ local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
 local AIM_RANDOMNESS = 1 -- Adds slight inaccuracy for realism
 local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
 local HEADSHOT_DAMAGE = 59 -- Damage multiplier for headshots
-local HEAD_SCALE = 15 -- Adjust this value to make heads bigger or smaller
+local HEAD_SCALE = 3 -- Adjust this value to make heads bigger or smaller
 local TRACK_MOVEMENT = true -- Predicts enemy movement
 
 -- Function to check if a player is an enemy
@@ -311,19 +311,42 @@ local function onShoot()
     end
 end
 
-local function enlargeEnemyHeads()
-    for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team and player.Character then
-            local head = player.Character:FindFirstChild("Head")
-            if head and head:IsA("BasePart") then
-                head.Size = Vector3.new(HEAD_SCALE, HEAD_SCALE, HEAD_SCALE) -- Set head size
-                head.Massless = true -- Prevent physics issues
+-- Function to enlarge enemy heads
+local function enlargeHead(player)
+    if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team and player.Character then
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+        local head = player.Character:FindFirstChild("Head")
+
+        if humanoid and head then
+            if humanoid.RigType == Enum.HumanoidRigType.R15 then
+                -- For R15 avatars (modern Roblox characters)
+                humanoid.HeadScale = HEAD_SCALE
+            else
+                -- For R6 avatars (classic blocky characters)
+                head.Size = Vector3.new(HEAD_SCALE, HEAD_SCALE, HEAD_SCALE)
+                head.Massless = true -- Prevents physics issues
             end
         end
     end
 end
 
-RunService.Heartbeat:Connect(enlargeEnemyHeads)
+-- Apply big head effect to all enemies continuously
+local function updateHeads()
+    for _, player in pairs(Players:GetPlayers()) do
+        enlargeHead(player)
+    end
+end
+
+-- Detect when new players join and apply effect
+Players.PlayerAdded:Connect(function(player)
+    player.CharacterAdded:Connect(function()
+        task.wait(0.5) -- Small delay to ensure character loads
+        enlargeHead(player)
+    end)
+end)
+
+-- Continuously update head sizes (for reloading avatars)
+RunService.Heartbeat:Connect(updateHeads)
 
 -- Detect PC Shooting (Mouse Click)
 Mouse.Button1Down:Connect(onShoot)
