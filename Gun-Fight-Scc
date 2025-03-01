@@ -52,6 +52,10 @@ local function applyHighlight(character)
         highlight.Parent = character
         highlight.FillColor = Color3.new(0, 0, 0)
         highlight.OutlineColor = Color3.new(0, 0, 0)
+        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Makes it visible at all distances
+        highlight.FillTransparency = 0.2  -- Less transparent for better visibility
+        highlight.OutlineTransparency = 0 -- Fully visible outline
+        highlight.OutlineThickness = 2    -- Thicker outline for clarity
     end
     
     local player = Players:GetPlayerFromCharacter(character)
