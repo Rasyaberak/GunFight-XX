@@ -242,13 +242,20 @@ local function isTargetValid(target)
     if not target or not target.Parent then return false end
     local origin = Camera.CFrame.Position
     local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
-    local raycastResult = workspace:Raycast(origin, direction, {LocalPlayer.Character, target.Parent}) -- Ignore local player & enemy
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {LocalPlayer.Character} -- Ignore self
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local raycastResult = workspace:Raycast(origin, direction, raycastParams)
 
     if raycastResult then
-        -- If wall penetration is enabled, allow shooting through walls
-        return WALLBANG_ENABLED
+        if WALLBANG_ENABLED then
+            return true -- Allow shooting through walls
+        else
+            return false -- Block shot if wallbang is disabled
+        end
     else
-        return true -- Target is visible
+        return true -- No obstruction, can shoot normally
     end
 end
 
