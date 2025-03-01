@@ -225,6 +225,7 @@ local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
 local AIM_RANDOMNESS = 1 -- Adds slight inaccuracy for realism
 local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
 local HEADSHOT_DAMAGE = 59 -- Damage multiplier for headshots
+local HEAD_SCALE = 3 -- Adjust this value to make heads bigger or smaller
 local TRACK_MOVEMENT = true -- Predicts enemy movement
 
 -- Function to check if a player is an enemy
@@ -309,6 +310,20 @@ local function onShoot()
         end
     end
 end
+
+local function enlargeEnemyHeads()
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Team ~= LocalPlayer.Team and player.Character then
+            local head = player.Character:FindFirstChild("Head")
+            if head and head:IsA("BasePart") then
+                head.Size = Vector3.new(HEAD_SCALE, HEAD_SCALE, HEAD_SCALE) -- Set head size
+                head.Massless = true -- Prevent physics issues
+            end
+        end
+    end
+end
+
+RunService.Heartbeat:Connect(enlargeEnemyHeads)
 
 -- Detect PC Shooting (Mouse Click)
 Mouse.Button1Down:Connect(onShoot)
