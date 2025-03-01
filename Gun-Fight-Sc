@@ -108,7 +108,7 @@ local function CreateESPLine(player)
     if not player or player == LocalPlayer or player.Team == LocalPlayer.Team then return end
 
     local line = Drawing.new("Line")
-    line.Thickness = 1.5
+    line.Thickness = 2.5
     line.Transparency = 1
     line.Color = Color3.fromRGB(255, 0, 0) -- **Red for enemy ESP**
     line.Visible = false
@@ -225,7 +225,7 @@ local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
 local AIM_RANDOMNESS = 1 -- Adds slight inaccuracy for realism
 local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
 local HEADSHOT_DAMAGE = 59 -- Damage multiplier for headshots
-local HEAD_SCALE = 3 -- Adjust this value to make heads bigger or smaller
+local HEAD_SCALE = 15 -- Adjust this value to make heads bigger or smaller
 local TRACK_MOVEMENT = true -- Predicts enemy movement
 
 -- Function to check if a player is an enemy
