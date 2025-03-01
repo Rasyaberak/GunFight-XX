@@ -3,27 +3,45 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local localPlayer = Players.LocalPlayer
 
--- Tween configuration
-local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- Tween configurations
+local tweenInfo = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local fadeOutInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local pulseInfo = TweenInfo.new(1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 
--- Function to tween highlight colors
-local function tweenHighlightColors(highlight, targetFillColor, targetOutlineColor)
-    if not highlight then return end
-    local tween = TweenService:Create(highlight, tweenInfo, {
-        FillColor = targetFillColor,
-        OutlineColor = targetOutlineColor,
-    })
-    tween:Play()
+-- Function to smoothly transition highlight colors
+local function tweenHighlightColors(highlight, targetFillColor, targetOutlineColor, outlineThickness, transparency)
+    if highlight then
+        TweenService:Create(highlight, tweenInfo, {
+            FillColor = targetFillColor,
+            OutlineColor = targetOutlineColor,
+            OutlineTransparency = transparency,
+            DepthMode = Enum.HighlightDepthMode.Occluded, -- Ensures ESP visibility through walls
+            OutlineThickness = outlineThickness
+        }):Play()
+    end
 end
 
--- Function to create a pulsating effect for enemies
-local function createPulseEffect(highlight, baseColor)
-    if not highlight then return end
-    local pulseTween = TweenService:Create(highlight, pulseInfo, {
-        FillColor = baseColor:Lerp(Color3.new(1, 1, 1), 0.3),
-    })
-    pulseTween:Play()
+-- Function to create an adaptive pulsing effect for enemies
+local function createPulseEffect(highlight, baseColor, isClose)
+    if highlight then
+        local pulseSpeed = isClose and 0.8 or 1.2 -- Faster pulse when close
+        local adjustedPulseInfo = TweenInfo.new(pulseSpeed, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+        TweenService:Create(highlight, adjustedPulseInfo, {
+            FillColor = baseColor:Lerp(Color3.new(1, 1, 1), 0.4),
+        }):Play()
+    end
+end
+
+-- Function to create a smooth fade-out effect for removed players
+local function fadeOutHighlight(highlight)
+    if highlight then
+        TweenService:Create(highlight, fadeOutInfo, {
+            FillTransparency = 1,
+            OutlineTransparency = 1
+        }):Play()
+        task.wait(0.6)
+        highlight:Destroy()
+    end
 end
 
 -- Function to check if a player is a bot
@@ -31,40 +49,51 @@ local function isBot(player)
     return player:GetAttribute("IsBot") == true or string.find(player.Name, "Bot") ~= nil
 end
 
--- Function to get highlight colors based on team and status
+-- Function to get highlight settings based on player status
 local function getTargetColors(player)
     if isBot(player) then
-        return Color3.fromRGB(255, 165, 0), Color3.fromRGB(255, 140, 0)
+        return Color3.fromRGB(255, 165, 0), Color3.fromRGB(255, 140, 0), 0.4, 1  -- Orange for bots
     elseif player.Team == localPlayer.Team then
-        return Color3.fromRGB(0, 150, 255), Color3.fromRGB(0, 120, 255)
+        return Color3.fromRGB(0, 200, 255), Color3.fromRGB(0, 160, 255), 0.5, 0.6  -- Blue for teammates
     else
-        return Color3.fromRGB(255, 0, 0), Color3.fromRGB(200, 0, 0)
+        return Color3.fromRGB(255, 50, 50), Color3.fromRGB(180, 20, 20), 1.2, 0  -- Red for enemies (thicker outline)
     end
 end
 
--- Function to apply or update the highlight
+-- Function to check if an enemy is close to the player
+local function isCloseToLocalPlayer(character)
+    if not character or not localPlayer.Character then return false end
+    local enemyRoot = character:FindFirstChild("HumanoidRootPart")
+    local localRoot = localPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if enemyRoot and localRoot then
+        local distance = (localRoot.Position - enemyRoot.Position).Magnitude
+        return distance < 20 -- Consider "close" if within 20 studs
+    end
+    return false
+end
+
+-- Function to apply or update highlights on characters
 local function applyHighlight(character)
     if not character then return end
+    
     local highlight = character:FindFirstChild("Highlight")
     if not highlight then
         highlight = Instance.new("Highlight")
         highlight.Name = "Highlight"
         highlight.Parent = character
-        highlight.FillColor = Color3.new(0, 0, 0)
-        highlight.OutlineColor = Color3.new(0, 0, 0)
-        highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop -- Makes it visible at all distances
-        highlight.FillTransparency = 0.2  -- Less transparent for better visibility
-        highlight.OutlineTransparency = 0 -- Fully visible outline
-        highlight.OutlineThickness = 2    -- Thicker outline for clarity
+        highlight.FillTransparency = 0.5
+        highlight.OutlineTransparency = 0
     end
-    
+
     local player = Players:GetPlayerFromCharacter(character)
     if player then
-        local targetFill, targetOutline = getTargetColors(player)
-        tweenHighlightColors(highlight, targetFill, targetOutline)
-        
+        local targetFill, targetOutline, outlineThickness, transparency = getTargetColors(player)
+        tweenHighlightColors(highlight, targetFill, targetOutline, outlineThickness, transparency)
+
+        -- Apply pulsing effect for enemies
         if player.Team ~= localPlayer.Team and not isBot(player) then
-            createPulseEffect(highlight, targetFill)
+            local isClose = isCloseToLocalPlayer(character)
+            createPulseEffect(highlight, targetFill, isClose)
         end
     end
 end
@@ -91,15 +120,16 @@ end
 -- Listen for new players
 Players.PlayerAdded:Connect(onPlayerAdded)
 
--- Cleanup when players leave
+-- Cleanup when players leave (smooth fade-out)
 Players.PlayerRemoving:Connect(function(player)
     if player.Character then
         local highlight = player.Character:FindFirstChild("Highlight")
         if highlight then
-            highlight:Destroy()
+            fadeOutHighlight(highlight)
         end
     end
 end)
+
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
