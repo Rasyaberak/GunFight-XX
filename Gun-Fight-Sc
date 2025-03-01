@@ -168,17 +168,27 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Mouse = LocalPlayer:GetMouse()
 local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
 
--- Spread factor (adjust this value for more or less spread)
-local SPREAD_AMOUNT = 10 -- Higher value means more spread
+-- Configuration
+local AIM_SMOOTHNESS = 0.2 -- Lower = Faster Aiming
+local SPREAD_AMOUNT = 5 -- Small random offset to prevent perfect tracking
+
+-- Function to check if a player is an enemy
+local function isEnemy(player)
+    if player and player.Team ~= LocalPlayer.Team then
+        return true
+    end
+    return false
+end
 
 -- Function to find the closest enemy head
-local function findClosestHead()
+local function findClosestEnemyHead()
     local closestHead = nil
     local shortestDistance = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
+        if player ~= LocalPlayer and isEnemy(player) and player.Character then
             local head = player.Character:FindFirstChild("Head")
             if head then
                 local screenPos, onScreen = Camera:WorldToScreenPoint(head.Position)
@@ -195,45 +205,30 @@ local function findClosestHead()
     return closestHead
 end
 
--- Function to apply aim spread to the shooting direction
-local function applyAimSpread(target)
-    if target then
-        -- Get a random spread offset for the bullet's aim
-        local spreadOffsetX = math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
-        local spreadOffsetY = math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
-
-        -- Apply the offset to the target's screen position
-        local screenPos, onScreen = Camera:WorldToScreenPoint(target.Position)
+-- Function to smoothly move aim toward target
+local function smoothAim(targetHead)
+    if targetHead then
+        local screenPos, onScreen = Camera:WorldToScreenPoint(targetHead.Position)
         if onScreen then
-            screenPos = screenPos + Vector2.new(spreadOffsetX, spreadOffsetY)
-            local worldPos = Camera:ScreenToWorldPoint(Vector3.new(screenPos.X, screenPos.Y, screenPos.Z))
-            return worldPos
-        end
-    end
-    return nil
-end
+            local targetX = screenPos.X + math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
+            local targetY = screenPos.Y + math.random(-SPREAD_AMOUNT, SPREAD_AMOUNT)
 
--- Function to handle bullet hit with headshot aim correction
-local function onBulletHit(target, damage)
-    if target and target.Parent then
-        local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
-        local head = target.Parent:FindFirstChild("Head") or findClosestHead()
-
-        if humanoid and head then
-            -- Force hit to register on the head
-            humanoid:TakeDamage(damage * 2) -- Double damage
+            Mouse.X = Mouse.X + (targetX - Mouse.X) * AIM_SMOOTHNESS
+            Mouse.Y = Mouse.Y + (targetY - Mouse.Y) * AIM_SMOOTHNESS
         end
     end
 end
 
 -- Function to handle shooting (PC & Mobile)
 local function onShoot()
-    local target = findClosestHead() or Mouse.Target
-    if target then
-        -- Apply aim spread before hitting the target
-        local spreadTarget = applyAimSpread(target)
-        if spreadTarget then
-            onBulletHit(spreadTarget, 25) -- Adjust base damage
+    local targetHead = findClosestEnemyHead()
+    if targetHead then
+        smoothAim(targetHead) -- Smoothly adjust aim
+        task.wait(0.1) -- Small delay to make aim look natural
+        -- Simulate a direct hit on the enemy's head
+        local humanoid = targetHead.Parent:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoid:TakeDamage(50) -- Adjust damage as needed
         end
     end
 end
@@ -242,8 +237,16 @@ end
 Mouse.Button1Down:Connect(onShoot)
 
 -- Detect Mobile Shooting (Touch Tap)
-UserInputService.TouchTap:Connect(function(touchPositions, processed)
+UserInputService.TouchTap:Connect(function(_, processed)
     if not processed then
         onShoot()
+    end
+end)
+
+-- Smooth Aimbot Loop
+RunService.RenderStepped:Connect(function()
+    local targetHead = findClosestEnemyHead()
+    if targetHead then
+        smoothAim(targetHead)
     end
 end)
