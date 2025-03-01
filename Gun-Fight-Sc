@@ -222,29 +222,34 @@ local Camera = workspace.CurrentCamera
 
 -- 🎯 AIMBOT SETTINGS 🎯 --
 local AIM_SPEED = 0.1 -- Smoothness (Lower = Slower, Higher = Faster)
-local AIM_RANDOMNESS = 5 -- Small inaccuracy for realism
-local REACTION_TIME = 0.01 -- Delay before locking onto an enemy
+local AIM_RANDOMNESS = 3 -- Small inaccuracy for realism
+local REACTION_TIME = 0.05 -- Delay before locking onto an enemy
 local HEADSHOT_DAMAGE = 50 -- Base headshot damage
-local BODYSHOT_DAMAGE = 45 -- Base bodyshot damage
+local BODYSHOT_DAMAGE = 25 -- Base bodyshot damage
 local DAMAGE_MULTIPLIER_DISTANCE = 0.1 -- More damage at long range
 local TRACK_MOVEMENT = true -- Predicts enemy movement
 local AUTO_HIT_CORRECTION = true -- Fixes missed shots to hit
+local WALLBANG_ENABLED = false -- 🔥 Set to true to shoot enemies through walls
+local WALLBANG_DAMAGE_REDUCTION = 0.5 -- Reduce damage through walls by 50%
 
 -- Function to check if a player is an enemy
 local function isEnemy(player)
     return player and player.Team ~= LocalPlayer.Team
 end
 
--- Function to check if an enemy is visible
-local function isVisible(target)
-    if target and target.Parent then
-        local origin = Camera.CFrame.Position
-        local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
-        local raycastResult = workspace:Raycast(origin, direction, {LocalPlayer.Character, target.Parent}) -- Ignore local player & enemy
+-- Function to check if an enemy is visible or behind a wall
+local function isTargetValid(target)
+    if not target or not target.Parent then return false end
+    local origin = Camera.CFrame.Position
+    local direction = (target.Position - origin).unit * (target.Position - origin).magnitude
+    local raycastResult = workspace:Raycast(origin, direction, {LocalPlayer.Character, target.Parent}) -- Ignore local player & enemy
 
-        return not raycastResult -- Returns true if no obstacles
+    if raycastResult then
+        -- If wall penetration is enabled, allow shooting through walls
+        return WALLBANG_ENABLED
+    else
+        return true -- Target is visible
     end
-    return false
 end
 
 -- Function to predict enemy movement
@@ -257,28 +262,28 @@ local function predictPosition(target)
     return target.Position
 end
 
--- Function to find the closest visible enemy head
-local function findClosestVisibleEnemyHead()
-    local closestHead = nil
+-- Function to find the closest enemy (visible or behind a wall if enabled)
+local function findClosestEnemy()
+    local closestTarget = nil
     local shortestDistance = math.huge
 
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and isEnemy(player) and player.Character then
             local head = player.Character:FindFirstChild("Head")
-            if head and isVisible(head) then
+            if head and isTargetValid(head) then
                 local predictedPos = predictPosition(head)
                 local screenPos, onScreen = Camera:WorldToScreenPoint(predictedPos)
                 if onScreen then
                     local distance = (Vector2.new(Mouse.X, Mouse.Y) - Vector2.new(screenPos.X, screenPos.Y)).Magnitude
                     if distance < shortestDistance then
                         shortestDistance = distance
-                        closestHead = head
+                        closestTarget = head
                     end
                 end
             end
         end
     end
-    return closestHead
+    return closestTarget
 end
 
 -- Function to smoothly aim toward the target
@@ -297,11 +302,18 @@ local function smoothAim(targetHead)
     end
 end
 
--- Function to calculate damage based on distance
+-- Function to calculate damage based on distance and wall penetration
 local function calculateDamage(target)
     local distance = (Camera.CFrame.Position - target.Position).Magnitude
     local extraDamage = distance * DAMAGE_MULTIPLIER_DISTANCE
-    return HEADSHOT_DAMAGE + extraDamage
+    local baseDamage = HEADSHOT_DAMAGE
+
+    -- If wall penetration is enabled and the shot goes through a wall, reduce damage
+    if WALLBANG_ENABLED and not isTargetValid(target) then
+        return (baseDamage + extraDamage) * WALLBANG_DAMAGE_REDUCTION
+    else
+        return baseDamage + extraDamage
+    end
 end
 
 -- Function to correct missed shots and ensure hits
@@ -315,24 +327,24 @@ local function correctMiss(target)
     end
 end
 
--- Function to shoot when an enemy is visible
+-- Function to shoot when an enemy is visible or behind a wall
 local function onShoot()
-    local targetHead = findClosestVisibleEnemyHead()
-    if targetHead then
+    local target = findClosestEnemy()
+    if target then
         task.wait(REACTION_TIME) -- Simulated reaction delay
-        smoothAim(targetHead) -- Gradually move crosshair
+        smoothAim(target) -- Gradually move crosshair
         task.wait(0.1) -- Small delay for realism
 
         -- Simulate headshot damage
-        local humanoid = targetHead.Parent:FindFirstChildOfClass("Humanoid")
+        local humanoid = target.Parent:FindFirstChildOfClass("Humanoid")
         if humanoid then
-            local damage = calculateDamage(targetHead)
+            local damage = calculateDamage(target)
             humanoid:TakeDamage(damage) -- Apply calculated damage
         end
     else
         -- If shot misses, auto-correct to still hit
         if AUTO_HIT_CORRECTION then
-            local randomEnemy = findClosestVisibleEnemyHead()
+            local randomEnemy = findClosestEnemy()
             if randomEnemy then correctMiss(randomEnemy) end
         end
     end
@@ -348,10 +360,10 @@ UserInputService.TouchTap:Connect(function(_, processed)
     end
 end)
 
--- Ultra-Smooth Aimbot Loop (Only Reacts When Enemy is Visible)
+-- Ultra-Smooth Aimbot Loop (Only Reacts When Enemy is Visible or Behind a Wall)
 RunService.RenderStepped:Connect(function()
-    local targetHead = findClosestVisibleEnemyHead()
-    if targetHead then
-        smoothAim(targetHead)
+    local target = findClosestEnemy()
+    if target then
+        smoothAim(target)
     end
 end)
