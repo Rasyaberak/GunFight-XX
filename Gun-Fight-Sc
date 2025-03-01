@@ -229,7 +229,7 @@ local BODYSHOT_DAMAGE = 25 -- Base bodyshot damage
 local DAMAGE_MULTIPLIER_DISTANCE = 0.1 -- More damage at long range
 local TRACK_MOVEMENT = true -- Predicts enemy movement
 local AUTO_HIT_CORRECTION = true -- Fixes missed shots to hit
-local WALLBANG_ENABLED = false -- 🔥 Set to true to shoot enemies through walls
+local WALLBANG_ENABLED = true -- 🔥 Set to true to shoot enemies through walls
 local WALLBANG_DAMAGE_REDUCTION = 0.5 -- Reduce damage through walls by 50%
 
 -- Function to check if a player is an enemy
